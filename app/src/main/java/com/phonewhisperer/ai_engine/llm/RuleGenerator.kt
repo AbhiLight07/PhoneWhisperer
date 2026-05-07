@@ -1,21 +1,22 @@
 package com.phonewhisperer.ai_engine.llm
 
 import android.util.Log
+import com.phonewhisperer.ai_engine.feature_engineering.TemporalFeatureEncoder
+import com.phonewhisperer.ai_engine.feature_engineering.UsagePatternVectorizer
 import com.phonewhisperer.data.local.db.entity.AutomationRuleEntity
 import com.phonewhisperer.data.local.db.entity.BehaviorEvent
 import com.phonewhisperer.data.local.db.entity.BehaviorPatternEntity
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 /**
- * On-device LLM rule generator.
+ * On-device Heuristic Rule Generator (LLM Mock).
  *
- * For Phase 3 (Hackathon execution), this is a "Heuristic LLM Mock".
- * It structurally replaces the MediaPipe Gemma 2B SDK to avoid massive
- * model downloads (1.5GB) while perfectly simulating the JSON-structured
- * outputs an LLM would provide.
- *
- * It maps detected DBSCAN patterns (`BehaviorPatternEntity`) into
- * human-readable proposed `AutomationRuleEntity`s.
+ * Phase 6 upgrade: Now generates rules with:
+ *   - Rule categories (Focus, Sleep, Commute, Productivity)
+ *   - Confidence explanations ("Detected 17 times over 3 weeks")
+ *   - Human-readable contextual summaries
+ *   - Smart action inference based on behavioral context
  */
 class RuleGenerator {
 
@@ -25,26 +26,13 @@ class RuleGenerator {
 
     /**
      * Generates automation rules from detected behavior patterns.
-     *
-     * @param patterns List of BehaviorPatterns from DBSCAN
-     * @return List of proposed AutomationRules for user approval
+     * Now enriched with categories, confidence explanations, and context.
      */
     suspend fun generateRules(patterns: List<BehaviorPatternEntity>): List<AutomationRuleEntity> {
-        Log.d(TAG, "Generating rules for ${patterns.size} patterns via Heuristic LLM Mock")
-        
-        // Simulate LLM inference delay (processing time)
-        delay(1500)
-        
-        val rules = mutableListOf<AutomationRuleEntity>()
+        Log.d(TAG, "Generating rules for ${patterns.size} patterns via Heuristic LLM")
+        delay(800) // Simulate inference latency
 
-        for (pattern in patterns) {
-            val rule = inferRuleFromPattern(pattern)
-            if (rule != null) {
-                rules.add(rule)
-            }
-        }
-
-        return rules
+        return patterns.mapNotNull { inferRuleFromPattern(it) }
     }
 
     private fun inferRuleFromPattern(pattern: BehaviorPatternEntity): AutomationRuleEntity? {
@@ -54,45 +42,140 @@ class RuleGenerator {
         val triggerValue: String
         val actionType: String
         val actionValue: String
+        val confPct = (pattern.confidence * 100).roundToInt()
 
-        // Mock LLM prompt/response logic via heuristics
         when (pattern.patternType) {
+
+            // ── Silent Mode Pattern ──────────────────────────────────
             BehaviorEvent.TYPE_SILENT_MODE -> {
-                name = "Auto-Mute Phone"
-                description = "Automatically mute the phone ${formatDays(pattern.dayOfWeekMask)} between ${pattern.startHour}:00 and ${pattern.endHour}:00."
+                val timeSegment = TemporalFeatureEncoder.getTimeSegment(pattern.startHour)
+                val location = pattern.associatedLocation
+
+                name = when {
+                    location == "WORK" || location == "Work/College" -> "🎓 Focus Mode"
+                    timeSegment == "NIGHT" || timeSegment == "LATE_NIGHT" -> "🌙 Bedtime Silence"
+                    timeSegment == "MORNING" && isWeekdayMask(pattern.dayOfWeekMask) -> "💼 Work Mode"
+                    else -> "🔇 Auto-Mute"
+                }
+
+                val dayStr = formatDays(pattern.dayOfWeekMask)
+                val contextStr = when {
+                    location != null -> "while at $location"
+                    isWeekdayMask(pattern.dayOfWeekMask) -> "during your work/college hours"
+                    else -> ""
+                }
+
+                description = buildString {
+                    append("Automatically silence your phone $dayStr at ${formatHour(pattern.startHour)}")
+                    if (pattern.startHour != pattern.endHour) append(" – ${formatHour(pattern.endHour)}")
+                    if (contextStr.isNotEmpty()) append(" $contextStr")
+                    append(".\n\n")
+                    append("📊 Confidence: $confPct% · Observed ${pattern.eventCount} times")
+                    val spanDays = ((pattern.lastSeen - pattern.firstSeen) / 86400000L).coerceAtLeast(1)
+                    append(" over ${spanDays}d")
+                }
+
                 triggerType = "TIME"
                 triggerValue = "${pattern.startHour}:00"
                 actionType = "RINGER_MODE"
                 actionValue = "SILENT"
             }
+
+            // ── Geofence Transition Pattern ──────────────────────────
             BehaviorEvent.TYPE_GEOFENCE_TRANSITION -> {
-                val loc = pattern.associatedLocation ?: "Unknown Place"
-                name = "Location Routine: $loc"
-                description = "When you arrive at $loc, switch phone to Vibrate."
+                val loc = pattern.associatedLocation ?: "Frequent Place"
+
+                name = when (loc) {
+                    "HOME" -> "🏠 Arriving Home"
+                    "WORK", "Work/College" -> "🎓 Arriving at Work"
+                    else -> "📍 Location: $loc"
+                }
+
+                description = buildString {
+                    append("Switch to Vibrate when you arrive at $loc.\n\n")
+                    append("📊 Confidence: $confPct% · ${pattern.eventCount} visits detected")
+                }
+
                 triggerType = "LOCATION"
                 triggerValue = loc
                 actionType = "RINGER_MODE"
                 actionValue = "VIBRATE"
             }
+
+            // ── Notification Fatigue Pattern ─────────────────────────
             BehaviorEvent.TYPE_NOTIFICATION -> {
-                val app = pattern.associatedApps.split(",").firstOrNull() ?: "App"
-                name = "Silence $app Notifications"
-                description = "You frequently dismiss $app notifications between ${pattern.startHour}:00 and ${pattern.endHour}:00. Want to silence them automatically?"
+                val apps = pattern.associatedApps.split(",").filter { it.isNotBlank() }
+                val primaryApp = apps.firstOrNull() ?: return null
+                val category = UsagePatternVectorizer.categorize(primaryApp)
+                val categoryName = UsagePatternVectorizer.getCategoryDisplayName(category)
+
+                name = when (category) {
+                    "SOCIAL" -> "📵 Social Media Quiet Time"
+                    "COMMUNICATION" -> "💬 Message Focus"
+                    else -> "🔕 Silence $categoryName"
+                }
+
+                description = buildString {
+                    append("You frequently dismiss ${categoryName.lowercase()} notifications ")
+                    append("between ${formatHour(pattern.startHour)} and ${formatHour(pattern.endHour)}. ")
+                    append("Auto-silence them during this window?\n\n")
+                    append("📊 Confidence: $confPct% · ${pattern.eventCount} dismissals observed")
+                }
+
                 triggerType = "TIME"
                 triggerValue = "${pattern.startHour}:00"
                 actionType = "NOTIFICATION_BLOCK"
-                actionValue = app
+                actionValue = primaryApp
             }
+
+            // ── Screen-Off / Sleep Pattern ───────────────────────────
             BehaviorEvent.TYPE_SCREEN_OFF -> {
-                name = "Bedtime Mode"
-                description = "You typically stop using your phone around ${pattern.startHour}:00. Enable Do Not Disturb automatically?"
+                name = "🌙 Bedtime Mode"
+
+                description = buildString {
+                    append("You typically stop using your phone around ${formatHour(pattern.startHour)}. ")
+                    append("Enable Do Not Disturb automatically?\n\n")
+                    append("📊 Confidence: $confPct% · Detected ${pattern.eventCount} consistent sleep times")
+                }
+
                 triggerType = "TIME"
                 triggerValue = "${pattern.startHour}:00"
                 actionType = "DND"
                 actionValue = "ON"
             }
+
+            // ── App Usage Pattern ────────────────────────────────────
+            BehaviorEvent.TYPE_APP_USAGE -> {
+                val apps = pattern.associatedApps.split(",").filter { it.isNotBlank() }
+                val primaryApp = apps.firstOrNull() ?: return null
+                val category = UsagePatternVectorizer.categorize(primaryApp)
+                val categoryName = UsagePatternVectorizer.getCategoryDisplayName(category)
+
+                name = when (category) {
+                    "MUSIC" -> "🎵 Music Session"
+                    "SOCIAL" -> "📱 Social Routine"
+                    "PRODUCTIVITY" -> "💻 Work Session"
+                    "ENTERTAINMENT" -> "🎬 Entertainment Time"
+                    "EDUCATION" -> "📚 Study Session"
+                    else -> "📱 $categoryName Routine"
+                }
+
+                description = buildString {
+                    append("You regularly use ${categoryName.lowercase()} apps ")
+                    append("${formatDays(pattern.dayOfWeekMask)} around ${formatHour(pattern.startHour)}. ")
+                    append("Detected pattern across ${apps.size} app(s).\n\n")
+                    append("📊 Confidence: $confPct% · ${pattern.eventCount} sessions observed")
+                }
+
+                // App usage patterns don't have a direct action yet — mark as informational
+                triggerType = "TIME"
+                triggerValue = "${pattern.startHour}:00"
+                actionType = "DND" // Sensible default: focus mode during work
+                actionValue = if (category == "PRODUCTIVITY") "PRIORITY" else "ON"
+            }
+
             else -> {
-                Log.d(TAG, "Pattern type ${pattern.patternType} unsupported by rule generator yet.")
+                Log.d(TAG, "Unsupported pattern type: ${pattern.patternType}")
                 return null
             }
         }
@@ -109,15 +192,23 @@ class RuleGenerator {
         )
     }
 
+    private fun isWeekdayMask(mask: Int): Boolean {
+        val weekdays = 0b00111110
+        return (mask and weekdays) == weekdays
+    }
+
+    private fun formatHour(hour: Int): String {
+        val amPm = if (hour < 12) "AM" else "PM"
+        val h = if (hour == 0) 12 else if (hour > 12) hour - 12 else hour
+        return "$h:00 $amPm"
+    }
+
     private fun formatDays(mask: Int): String {
-        // Bitmask: Mon=1, Tue=2, Wed=4, Thu=8, Fri=16, Sat=32, Sun=64
-        val weekdays = 31 // 1|2|4|8|16
-        val weekends = 96 // 32|64
-        
+        val weekdays = 0b00111110
+        val weekends = 0b11000000
         if ((mask and weekdays) == weekdays && (mask and weekends) == 0) return "on weekdays"
         if ((mask and weekends) == weekends && (mask and weekdays) == 0) return "on weekends"
-        if (mask == 127) return "every day"
-        
-        return "on specific days"
+        if (mask == 0b11111110 || mask == 0b01111111) return "every day"
+        return "on select days"
     }
 }
