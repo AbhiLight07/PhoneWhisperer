@@ -68,8 +68,8 @@ class PatternAnalysisWorker @AssistedInject constructor(
                     // Reconstruct pattern with DB-assigned ID for LLM
                     val savedPattern = pattern.copy(id = patternId)
 
-                    // 4. Generate Rules
-                    val rules = ruleGenerator.generateRules(listOf(savedPattern))
+                    // 4. Generate Rules (3-tier: On-device Gemma → Gemini Cloud → Heuristic)
+                    val rules = ruleGenerator.generateRules(listOf(savedPattern), applicationContext)
                     
                     // 5. Save Rules
                     for (rule in rules) {

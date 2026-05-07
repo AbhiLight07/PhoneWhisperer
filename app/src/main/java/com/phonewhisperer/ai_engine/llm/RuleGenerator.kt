@@ -10,13 +10,22 @@ import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
- * On-device Heuristic Rule Generator (LLM Mock).
+ * Hybrid Rule Generator: Heuristic + LLM.
  *
- * Phase 6 upgrade: Now generates rules with:
- *   - Rule categories (Focus, Sleep, Commute, Productivity)
- *   - Confidence explanations ("Detected 17 times over 3 weeks")
- *   - Human-readable contextual summaries
- *   - Smart action inference based on behavioral context
+ * Pipeline:
+ *   BehaviorPattern → Heuristic (fast, reliable baseline)
+ *                   → GeminiRuleEnhancer (optional, natural language polish)
+ *                   → AutomationRule
+ *
+ * The heuristic always runs first to guarantee output.
+ * Gemini enhances the description ONLY if:
+ *   - API key is configured in GeminiRuleEnhancer
+ *   - Network is available
+ *   - LLM response is valid
+ *
+ * This dual-layer approach gives us:
+ *   - Reliability of on-device heuristics
+ *   - Expressiveness of LLM-generated language
  */
 class RuleGenerator {
 
@@ -26,13 +35,55 @@ class RuleGenerator {
 
     /**
      * Generates automation rules from detected behavior patterns.
-     * Now enriched with categories, confidence explanations, and context.
+     *
+     * 3-tier LLM pipeline (highest priority first):
+     *   1. On-device Gemma 2B (MediaPipe) — fully offline, no API key
+     *   2. Gemini Cloud API — needs internet + API key
+     *   3. Heuristic — always available, instant
+     *
+     * @param patterns Detected patterns from DBSCAN
+     * @param context Android context (needed for on-device model path resolution)
      */
-    suspend fun generateRules(patterns: List<BehaviorPatternEntity>): List<AutomationRuleEntity> {
-        Log.d(TAG, "Generating rules for ${patterns.size} patterns via Heuristic LLM")
-        delay(800) // Simulate inference latency
+    suspend fun generateRules(
+        patterns: List<BehaviorPatternEntity>,
+        context: android.content.Context? = null
+    ): List<AutomationRuleEntity> {
+        // Determine which LLM backend to use
+        val onDeviceAvailable = context != null && OnDeviceLlmEngine.isModelAvailable(context)
+        val cloudAvailable = GeminiRuleEnhancer.isAvailable
 
-        return patterns.mapNotNull { inferRuleFromPattern(it) }
+        val mode = when {
+            onDeviceAvailable -> "On-Device Gemma 2B (MediaPipe)"
+            cloudAvailable -> "Cloud Gemini API"
+            else -> "Heuristic-only"
+        }
+        Log.d(TAG, "Generating rules for ${patterns.size} patterns via $mode")
+
+        // Step 1: Always generate heuristic baseline (fast, reliable)
+        val heuristicRules = patterns.mapNotNull { inferRuleFromPattern(it) }
+
+        // Step 2: Enhance with best available LLM
+        if (onDeviceAvailable && context != null) {
+            Log.d(TAG, "🧠 Enhancing ${heuristicRules.size} rules with on-device Gemma 2B...")
+            return heuristicRules.mapIndexed { index, rule ->
+                val pattern = patterns.getOrNull(index)
+                if (pattern != null) {
+                    OnDeviceLlmEngine.enhanceRule(context, pattern, rule)
+                } else rule
+            }
+        }
+
+        if (cloudAvailable) {
+            Log.d(TAG, "☁️ Enhancing ${heuristicRules.size} rules with Gemini Cloud API...")
+            return heuristicRules.mapIndexed { index, rule ->
+                val pattern = patterns.getOrNull(index)
+                if (pattern != null) {
+                    GeminiRuleEnhancer.enhanceRule(pattern, rule)
+                } else rule
+            }
+        }
+
+        return heuristicRules
     }
 
     private fun inferRuleFromPattern(pattern: BehaviorPatternEntity): AutomationRuleEntity? {

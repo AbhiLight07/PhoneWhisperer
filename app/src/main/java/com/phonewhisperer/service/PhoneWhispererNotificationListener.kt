@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import javax.inject.Inject
@@ -79,6 +80,17 @@ class PhoneWhispererNotificationListener : NotificationListenerService() {
 
         serviceScope.launch {
             try {
+                // ── Phase 4: Check for active NOTIFICATION_BLOCK rules ──
+                val approvedRules = eventRepository.getApprovedRules().first()
+                val blockRule = approvedRules.find {
+                    it.actionType == "NOTIFICATION_BLOCK" && it.actionValue == sbn.packageName
+                }
+                if (blockRule != null) {
+                    cancelNotification(sbn.key)
+                    Log.d(TAG, "🚫 BLOCKED notification from $appName (rule: ${blockRule.name})")
+                    return@launch
+                }
+
                 // 1. Insert into dedicated notification table
                 val notifEvent = NotificationEvent(
                     timestamp = now,
