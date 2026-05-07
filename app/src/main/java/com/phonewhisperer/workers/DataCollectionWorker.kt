@@ -51,8 +51,11 @@ class DataCollectionWorker @AssistedInject constructor(
         private const val PREFS_NAME = "phonewhisperer_prefs"
         private const val KEY_LAST_COLLECTION = "last_collection_timestamp"
         private const val KEY_GEOFENCES_SETUP = "geofences_setup_complete"
+        private const val KEY_LAST_AI_RUN = "last_ai_run_timestamp"
         private const val DATA_RETENTION_DAYS = 14
         private const val MIN_LOCATIONS_FOR_GEOFENCE = 20
+        private const val MIN_EVENTS_FOR_AI = 10        // Minimum unprocessed events to trigger AI
+        private const val AI_COOLDOWN_HOURS = 6L        // Hours between AI runs
     }
 
     override suspend fun doWork(): Result {
@@ -113,6 +116,31 @@ class DataCollectionWorker @AssistedInject constructor(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Geofence setup check failed", e)
+            }
+
+            // 6. Auto-trigger AI Pattern Analysis (Phase 3/6)
+            //    Runs if: ≥10 unprocessed events AND ≥6 hours since last AI run
+            try {
+                val lastAiRun = prefs.getLong(KEY_LAST_AI_RUN, 0L)
+                val hoursSinceLastAi = (startTime - lastAiRun) / (60 * 60 * 1000L)
+                
+                if (hoursSinceLastAi >= AI_COOLDOWN_HOURS) {
+                    val unprocessedCount = eventRepository.getUnprocessedBehaviorEvents().size
+                    if (unprocessedCount >= MIN_EVENTS_FOR_AI) {
+                        Log.d(TAG, "AI trigger: $unprocessedCount unprocessed events, ${hoursSinceLastAi}h since last run — launching PatternAnalysisWorker")
+                        val aiWork = OneTimeWorkRequestBuilder<PatternAnalysisWorker>()
+                            .addTag(PatternAnalysisWorker.WORK_NAME)
+                            .build()
+                        WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+                            PatternAnalysisWorker.WORK_NAME,
+                            ExistingWorkPolicy.REPLACE,
+                            aiWork
+                        )
+                        prefs.edit().putLong(KEY_LAST_AI_RUN, startTime).apply()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "AI trigger check failed", e)
             }
 
             // Update last collection timestamp

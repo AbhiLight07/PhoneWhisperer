@@ -112,6 +112,76 @@ fun SettingsScreen() {
 
         Spacer(Modifier.height(24.dp))
 
+        // AI Engine Section
+        AnimatedVisibility(visible, enter = fadeIn(tween(800, 400)) + slideInVertically(tween(600, 400)) { 40 }) {
+            Column {
+                SectionHeader("AI Engine", "How PhoneWhisperer thinks")
+                Spacer(Modifier.height(12.dp))
+
+                val geminiAvailable = com.phonewhisperer.ai_engine.llm.GeminiRuleEnhancer.isAvailable
+
+                val onDeviceContext = androidx.compose.ui.platform.LocalContext.current
+                val onDeviceAvailable = com.phonewhisperer.ai_engine.llm.OnDeviceLlmEngine.isModelAvailable(onDeviceContext)
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkCard)
+                ) {
+                    Column(Modifier.padding(20.dp)) {
+                        SettingsInfoRow(
+                            Icons.Rounded.AutoAwesome,
+                            "Clustering Algorithm",
+                            "DBSCAN with cyclic sin/cos temporal encoding, Haversine spatial distance, and app-category semantic matching"
+                        )
+                        Spacer(Modifier.height(16.dp))
+
+                        val ruleGenMode = when {
+                            onDeviceAvailable -> "On-device Gemma 2B (MediaPipe) — fully offline, no API key"
+                            geminiAvailable -> "Cloud Gemini API — heuristic baseline + LLM enhancement"
+                            else -> "Heuristic-only — on-device rule generation"
+                        }
+                        val ruleGenIcon = when {
+                            onDeviceAvailable -> Icons.Rounded.Memory
+                            geminiAvailable -> Icons.Rounded.Cloud
+                            else -> Icons.Rounded.Settings
+                        }
+                        SettingsInfoRow(ruleGenIcon, "Rule Generator", ruleGenMode)
+
+                        Spacer(Modifier.height(16.dp))
+                        SettingsInfoRow(
+                            Icons.Rounded.Speed,
+                            "Inference Schedule",
+                            "Auto-runs every 6 hours when ≥10 unprocessed events exist. Manual trigger via Dashboard title tap."
+                        )
+
+                        // Status badge
+                        Spacer(Modifier.height(12.dp))
+                        val (badgeText, badgeColor) = when {
+                            onDeviceAvailable -> "🔒 On-Device Gemma 2B Active" to StatusActive
+                            geminiAvailable -> "☁️ Gemini Cloud LLM Active" to WhispererSecondary
+                            else -> "⚡ Heuristic Engine Active" to TextSecondary
+                        }
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(badgeColor.copy(0.1f))
+                                .padding(12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.CheckCircle, null, tint = badgeColor, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(badgeText, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = badgeColor)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+
         // About Section
         AnimatedVisibility(visible, enter = fadeIn(tween(800, 600)) + slideInVertically(tween(600, 600)) { 40 }) {
             Card(
@@ -146,6 +216,12 @@ fun SettingsScreen() {
                             AssistChip(onClick = {}, label = { Text("Kotlin", style = MaterialTheme.typography.labelSmall) }, leadingIcon = { Icon(Icons.Rounded.Code, null, Modifier.size(14.dp)) })
                             AssistChip(onClick = {}, label = { Text("Room", style = MaterialTheme.typography.labelSmall) }, leadingIcon = { Icon(Icons.Rounded.Storage, null, Modifier.size(14.dp)) })
                             AssistChip(onClick = {}, label = { Text("DBSCAN", style = MaterialTheme.typography.labelSmall) }, leadingIcon = { Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(14.dp)) })
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AssistChip(onClick = {}, label = { Text("Gemini", style = MaterialTheme.typography.labelSmall) }, leadingIcon = { Icon(Icons.Rounded.Psychology, null, Modifier.size(14.dp)) })
+                            AssistChip(onClick = {}, label = { Text("Hilt", style = MaterialTheme.typography.labelSmall) }, leadingIcon = { Icon(Icons.Rounded.Hub, null, Modifier.size(14.dp)) })
+                            AssistChip(onClick = {}, label = { Text("Compose", style = MaterialTheme.typography.labelSmall) }, leadingIcon = { Icon(Icons.Rounded.Brush, null, Modifier.size(14.dp)) })
                         }
                     }
                 }

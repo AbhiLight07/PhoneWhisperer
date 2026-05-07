@@ -1,9 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+// Read secrets from local.properties (never committed to git)
+val localProperties = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
 }
 
 android {
@@ -19,10 +27,13 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Room schema export for migration tracking
-        ksp {
-            arg("room.schemaLocation", "$projectDir/schemas")
-        }
+        // Inject API key from local.properties into BuildConfig
+        // This keeps the key out of source control and APK resources
+        buildConfigField(
+            "String",
+            "GEMINI_API_KEY",
+            "\"${localProperties.getProperty("GEMINI_API_KEY", "")}\""
+        )
     }
 
     buildTypes {
@@ -50,7 +61,13 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true  // Needed for BuildConfig.GEMINI_API_KEY
     }
+}
+
+// Room schema export for migration tracking
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 dependencies {
@@ -93,6 +110,12 @@ dependencies {
     // ── Coroutines ─────────────────────────────────────────────────
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
+
+    // ── Google Generative AI (Gemini LLM - cloud) ───────────────────
+    implementation(libs.google.generativeai)
+
+    // ── MediaPipe GenAI (on-device LLM - offline) ──────────────────
+    implementation(libs.mediapipe.genai)
 
     // ── Testing ────────────────────────────────────────────────────
     testImplementation(libs.junit)
