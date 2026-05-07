@@ -40,6 +40,7 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
     val locationCount by viewModel.locationEventCount.collectAsState()
     val appUsageCount by viewModel.appUsageEventCount.collectAsState()
     val distinctApps by viewModel.distinctAppCount.collectAsState()
+    val totalScreenTimeMs by viewModel.totalScreenTimeMs.collectAsState()
     val totalCount by viewModel.totalEventCount.collectAsState()
     val lastTimestamp by viewModel.lastEventTimestamp.collectAsState()
     val notificationCount by viewModel.notificationEventCount.collectAsState()
@@ -169,16 +170,45 @@ fun DashboardScreen(viewModel: DashboardViewModel = hiltViewModel()) {
         AnimatedVisibility(visible, enter = fadeIn(tween(800, 500)) + slideInVertically(tween(600, 500)) { 40 }) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
-                    MetricCard(Modifier.weight(1f), Icons.Rounded.LocationOn, "Locations", "$locationCount", listOf(StatusActive.copy(0.2f), StatusActive.copy(0.05f)))
-                    MetricCard(Modifier.weight(1f), Icons.Rounded.Apps, "App Sessions", "$appUsageCount", listOf(WhispererSecondary.copy(0.2f), WhispererSecondary.copy(0.05f)))
+                    MetricCard(
+                        Modifier.weight(1f), Icons.Rounded.LocationOn, "Locations", "$locationCount",
+                        listOf(StatusActive.copy(0.2f), StatusActive.copy(0.05f)),
+                        info = "GPS samples recorded every 15 min. Used by DBSCAN to detect places like HOME and WORK."
+                    )
+                    MetricCard(
+                        Modifier.weight(1f), Icons.Rounded.Apps, "App Sessions", "$appUsageCount",
+                        listOf(WhispererSecondary.copy(0.2f), WhispererSecondary.copy(0.05f)),
+                        info = "Each time you open and use an app for 3+ seconds, it counts as one session. Tracks which apps, when, and for how long."
+                    )
                 }
                 Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
-                    MetricCard(Modifier.weight(1f), Icons.Rounded.Timeline, "Behaviors", "$behaviorCount", listOf(WhispererPrimary.copy(0.2f), WhispererPrimary.copy(0.05f)))
-                    MetricCard(Modifier.weight(1f), Icons.Rounded.CalendarMonth, "Unique Apps", "$distinctApps", listOf(StatusPaused.copy(0.2f), StatusPaused.copy(0.05f)))
+                    MetricCard(
+                        Modifier.weight(1f), Icons.Rounded.Timeline, "Behaviors", "$behaviorCount",
+                        listOf(WhispererPrimary.copy(0.2f), WhispererPrimary.copy(0.05f)),
+                        info = "Ringer changes, screen on/off, and other device state events. These feed into DBSCAN to find your daily patterns."
+                    )
+                    MetricCard(
+                        Modifier.weight(1f), Icons.Rounded.Fingerprint, "Unique Apps", "$distinctApps",
+                        listOf(StatusPaused.copy(0.2f), StatusPaused.copy(0.05f)),
+                        info = "Number of different apps you've used. Categorized into SOCIAL, PRODUCTIVITY, etc. for smarter clustering."
+                    )
                 }
                 Row(Modifier.fillMaxWidth(), Arrangement.spacedBy(12.dp)) {
-                    MetricCard(Modifier.weight(1f), Icons.Rounded.NotificationsActive, "Notifications", "$notificationCount", listOf(WhispererAccent.copy(0.2f), WhispererAccent.copy(0.05f)))
-                    MetricCard(Modifier.weight(1f), Icons.Rounded.PhoneAndroid, "Notifying Apps", "$notificationApps", listOf(StatusWarning.copy(0.2f), StatusWarning.copy(0.05f)))
+                    MetricCard(
+                        Modifier.weight(1f), Icons.Rounded.NotificationsActive, "Notifications", "$notificationCount",
+                        listOf(WhispererAccent.copy(0.2f), WhispererAccent.copy(0.05f)),
+                        info = "Notifications received from all apps. Used to detect which apps you dismiss often → auto-block suggestions."
+                    )
+                    
+                    val hours = totalScreenTimeMs / (1000 * 60 * 60)
+                    val minutes = (totalScreenTimeMs / (1000 * 60)) % 60
+                    val screenTimeStr = if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m"
+                    
+                    MetricCard(
+                        Modifier.weight(1f), Icons.Rounded.Timer, "Screen Time", screenTimeStr,
+                        listOf(StatusWarning.copy(0.2f), StatusWarning.copy(0.05f)),
+                        info = "Total accumulated foreground usage time across all apps since collection started."
+                    )
                 }
             }
         }
@@ -261,11 +291,37 @@ private fun ConfidenceBadge(confidencePct: Int) {
 }
 
 @Composable
-private fun MetricCard(modifier: Modifier, icon: ImageVector, label: String, value: String, colors: List<Color>) {
+private fun MetricCard(modifier: Modifier, icon: ImageVector, label: String, value: String, colors: List<Color>, info: String? = null) {
+    var showInfo by remember { mutableStateOf(false) }
+
+    if (showInfo && info != null) {
+        AlertDialog(
+            onDismissRequest = { showInfo = false },
+            title = { Text(label, style = MaterialTheme.typography.titleMedium) },
+            text = { Text(info, style = MaterialTheme.typography.bodyMedium) },
+            confirmButton = {
+                TextButton(onClick = { showInfo = false }) { Text("Got it") }
+            },
+            containerColor = DarkCard,
+            titleContentColor = MaterialTheme.colorScheme.onBackground,
+            textContentColor = TextSecondary
+        )
+    }
+
     Card(modifier, RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = DarkCard)) {
         Box(Modifier.fillMaxWidth().background(Brush.linearGradient(colors)).padding(16.dp)) {
             Column {
-                Icon(icon, label, tint = colors[0].copy(alpha = 1f), modifier = Modifier.size(24.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Icon(icon, label, tint = colors[0].copy(alpha = 1f), modifier = Modifier.size(24.dp))
+                    if (info != null) {
+                        Icon(
+                            Icons.Rounded.Info, 
+                            contentDescription = "Info", 
+                            tint = TextMuted, 
+                            modifier = Modifier.size(18.dp).clickable { showInfo = true }
+                        )
+                    }
+                }
                 Spacer(Modifier.height(12.dp))
                 Text(value, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onBackground)
                 Text(label, style = MaterialTheme.typography.labelSmall, color = TextSecondary)

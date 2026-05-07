@@ -6,7 +6,6 @@ import com.phonewhisperer.ai_engine.feature_engineering.UsagePatternVectorizer
 import com.phonewhisperer.data.local.db.entity.AutomationRuleEntity
 import com.phonewhisperer.data.local.db.entity.BehaviorEvent
 import com.phonewhisperer.data.local.db.entity.BehaviorPatternEntity
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**

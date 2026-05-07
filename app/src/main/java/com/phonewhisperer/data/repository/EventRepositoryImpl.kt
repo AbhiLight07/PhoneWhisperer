@@ -104,6 +104,9 @@ class EventRepositoryImpl @Inject constructor(
     override fun getDistinctAppCount(): Flow<Int> =
         appUsageEventDao.getDistinctAppCount()
 
+    override fun getTotalScreenTimeMs(): Flow<Long?> =
+        appUsageEventDao.getTotalScreenTimeMs()
+
     // ── NotificationEvent ───────────────────────────────────────────
 
     override suspend fun insertNotificationEvent(event: NotificationEvent): Long =

@@ -58,6 +58,9 @@ interface AppUsageEventDao {
     @Query("SELECT COUNT(DISTINCT package_name) FROM app_usage_events")
     fun getDistinctAppCount(): Flow<Int>
 
+    @Query("SELECT SUM(duration_ms) FROM app_usage_events")
+    fun getTotalScreenTimeMs(): Flow<Long?>
+
     // ── Deduplication Check ─────────────────────────────────────────
 
     @Query("""
