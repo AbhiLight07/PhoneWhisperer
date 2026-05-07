@@ -1,175 +1,75 @@
-# 📱 PhoneWhisperer
-
-> *Your phone learns your life — so you don't have to manage it.*
-
-**CLASH OF THE CLAWS Hackathon — PRISM | Tech Management, RV COLLEGE OF ENGINEERING**
-
----
-
-## 🧩 Problem
-
-Every day, you manually manage your phone settings dozens of times:
-- Silence your phone before a lecture, forget to unsilence after
-- Enable Focus Mode for a meeting, disable it when you're done
-- Turn on DND at night, forget to turn it off in the morning
-
-Existing solutions like **IFTTT**, **Tasker**, or **Android Focus Modes** require YOU to manually set up every rule — which defeats the purpose of automation. They don't learn. They don't adapt.
-
-**PhoneWhisperer solves this.** It silently observes your behaviour, discovers your patterns automatically using on-device AI, and suggests automation rules for your approval — zero manual setup required.
+<div align="center">
+  <img src="https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" />
+  <img src="https://img.shields.io/badge/Kotlin-0095D5?&style=for-the-badge&logo=kotlin&logoColor=white" />
+  <img src="https://img.shields.io/badge/Jetpack_Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" />
+  <img src="https://img.shields.io/badge/MediaPipe-00B0FF?style=for-the-badge&logo=google&logoColor=white" />
+  
+  <h1>🤖 PhoneWhisperer</h1>
+  <p><b>A privacy-first, fully on-device AI agent that learns your behavioral routines and automates your phone.</b></p>
+</div>
 
 ---
 
-## 💡 Solution
+## 🌟 The Vision
 
-PhoneWhisperer is an Android app that works in three stages:
+Modern smartphones are smart, but they don't *learn*. You still manually put your phone on silent at work, manually turn on DND when sleeping, and manually clear distracting notifications when studying. 
 
-### 1. Observe (Passive Data Collection)
-Runs silently in the background using WorkManager (no battery drain, no foreground service). Collects:
-- GPS location (every 15 min, low-accuracy to save battery)
-- App usage (via UsageStatsManager)
-- DND / ringer mode changes
-- Calendar events
+**PhoneWhisperer** runs silently in the background, observing your behavior (app usage, screen time, locations, ringer modes). Using on-device machine learning (DBSCAN clustering), it finds your hidden routines and uses a **3-Tier LLM Pipeline** to suggest intelligent automation rules.
 
-All data is stored locally in a Room (SQLite) database. Nothing leaves your device.
+> **"Auto-mute your phone during college hours. Detected from your daily pattern."**
 
-### 2. Infer (On-Device AI)
-A nightly job runs two AI layers:
-- **DBSCAN Clustering** — groups your behaviour events by time + location + app usage to find recurring patterns (e.g., "every weekday 9–11am, you're at college with DND on")
-- **Gemma 2B LLM** (on-device via MediaPipe/TFLite) — reads the cluster statistics and generates a human-readable automation rule
+## ✨ Key Features
 
-### 3. Automate (User-Approved Execution)
-Generated rules appear as approval cards in the Jetpack Compose UI. You tap **Approve** or **Reject**. Approved rules execute automatically via Android OS APIs (AlarmManager, AudioManager, NotificationManager).
+- 🕵️ **Silent Observation:** Tracks App Usage (120+ apps categorized), Screen States, Locations, and Notifications with zero battery drain using Android `WorkManager`.
+- 🧠 **On-Device DBSCAN Clustering:** Analyzes data across time (cyclic sin/cos temporal encoding) and space (Haversine distance) to find clusters of repetitive behavior.
+- 💬 **3-Tier AI Rule Generation:** Automatically turns raw data into natural language rules using Google's Gemma 2B or Gemini Cloud API.
+- 🛡️ **Notification Interceptor:** Automatically auto-dismisses notifications from specific apps based on your AI-generated focus rules.
+- 🔒 **100% Privacy Preserving:** Raw GPS coordinates and sensitive data **never** leave the device. Everything is converted to abstract semantic labels (e.g., `HOME`, `WORK`, `SOCIAL`).
 
----
+## 🏗️ The 3-Tier LLM Architecture
 
-## 🏗️ Tech Stack
+To ensure the app never crashes due to network failures or missing API keys, we built a robust fallback pipeline:
 
-| Layer | Technology |
-|---|---|
-| Language | Kotlin |
-| UI | Jetpack Compose (Material 3) |
-| Database | Room DB (SQLite) |
-| Background Jobs | WorkManager |
-| Location | Google FusedLocationProvider |
-| AI Clustering | DBSCAN (custom Kotlin implementation) |
-| On-Device LLM | Gemma 2B via MediaPipe / TFLite |
-| Dependency Injection | Hilt (Dagger) |
-| Minimum SDK | Android 8.0 (API 26) |
+1. **Tier 1: MediaPipe + Gemma 2B (Fully Offline)**
+   If the user has the 1.3GB Gemma model installed locally, the app runs 100% offline, air-gapped inference using MediaPipe.
+2. **Tier 2: Gemini 2.0 Flash (Cloud API)**
+   If the local model isn't found, the app securely queries the Gemini API using anonymized metadata (no raw GPS/package names).
+3. **Tier 3: Heuristic Engine**
+   If there is no internet and no local model, the app instantly generates rules using an onboard heuristic template engine.
 
----
+## 🚀 Quick Install (For Evaluators)
 
-## ⚙️ Setup Instructions
+1. Go to the **[Releases](../../releases)** page and download the latest `app-debug.apk`.
+2. Install the APK on any Android 9.0+ device (accept the Google Play Protect warning if prompted).
+3. Open the app and grant the requested permissions on the Onboarding Screen (Usage Access, Notification Access, Location).
+4. **To Demo Instantly:** Tap the word "PhoneWhisperer" at the top of the Dashboard. This injects mock behavioral data and instantly triggers the AI pattern detection.
 
-### Prerequisites
-- Android Studio Hedgehog (2023.1.1) or later
-- Android device or emulator running Android 8.0+ (API 26+)
-- JDK 17
+## 📦 Enabling "Fully Offline Mode" (Gemma 2B)
 
-### Steps
+For maximum privacy, PhoneWhisperer can run entirely without internet.
+1. Download the **Gemma 2B INT4 GPU** model from [Kaggle](https://www.kaggle.com/models/google/gemma/tfLite/gemma-2b-it-gpu-int4).
+2. Extract the `.bin` file.
+3. Rename it to `gemma-2b-it-gpu-int4.bin` (if it isn't already).
+4. Place it directly in your Android phone's **Download** folder (`/sdcard/Download/`).
+5. Open the app's Settings tab. The AI Engine status will instantly detect the model and switch to **"🔒 On-Device Gemma 2B Active"**.
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/AbhiLight07/PhoneWhispere.git
-   cd PhoneWhisperer
-   ```
+## 💻 Setup for Developers
 
-2. **Open in Android Studio**
-   - File → Open → select the cloned folder
-   - Wait for Gradle sync to complete
+1. Clone the repository.
+2. Get a free Gemini API Key from [Google AI Studio](https://aistudio.google.com/).
+3. Create a `local.properties` file in the project root (this file is git-ignored for safety).
+4. Add your key: `GEMINI_API_KEY=your_api_key_here`
+5. Open the project in Android Studio Ladybug (or newer) and hit **Run**.
 
-3. **Build the project**
-   ```bash
-   ./gradlew assembleDebug
-   ```
-   Or use Android Studio: Build → Make Project
+## 🛠️ Tech Stack
 
-4. **Run on device/emulator**
-   - Connect your Android device via USB (enable Developer Options + USB Debugging)
-   - Click the ▶ Run button in Android Studio
-
-5. **Grant required permissions** (on first launch)
-   - Location permission → Allow
-   - Usage Stats → Go to Settings → Special App Access → Usage Access → Enable PhoneWhisperer
-   - DND Access → Allow (for rule execution)
+- **Architecture:** Clean Architecture, MVVM, Repository Pattern
+- **UI:** Jetpack Compose, Material 3
+- **Local Database:** Room Database (Reactive flows)
+- **Dependency Injection:** Dagger Hilt
+- **Background Work:** WorkManager, NotificationListenerService, UsageStatsManager
+- **AI Models:** MediaPipe GenAI (Gemma), Google Cloud Generative AI SDK
+- **Algorithms:** Custom DBSCAN implementation with cyclic temporal weighting
 
 ---
-
-## 🚀 Usage
-
-1. **Install and grant permissions** as described above
-2. **Let the app observe** — for best results, use your phone normally for 7–14 days. The app runs silently; you won't notice it.
-3. **Check the Dashboard** — after patterns are detected (nightly job), open the app to see suggested rules
-4. **Approve or Reject rules** — each rule shows what it does and why. Tap Approve to activate.
-5. **Your phone manages itself** — approved rules execute automatically from now on
-
-> **Note:** The first rule suggestions appear after approximately 3–7 days of observation, once enough data has been collected for clustering.
-
----
-
-## 📁 Project Structure
-
-```
-com.phonewhisperer/
-├── data/
-│   ├── db/                    # Room database, DAOs, entities
-│   ├── repository/            # Data access layer
-│   └── collectors/            # Location, UsageStats, Calendar collectors
-├── domain/
-│   ├── model/                 # BehaviorPattern, AutomationRule
-│   └── usecase/               # Business logic use cases
-├── ai_engine/
-│   ├── clustering/            # DBSCAN implementation
-│   └── llm/                   # Gemma 2B rule generator
-├── workers/                   # WorkManager background workers
-├── presentation/
-│   ├── ui/dashboard/          # Dashboard screen
-│   └── ui/rules/              # Rule approval screen
-└── PhoneWhispererApp.kt       # Application entry point
-```
-
----
-
-## 📋 Required Permissions
-
-```xml
-android.permission.ACCESS_FINE_LOCATION
-android.permission.ACCESS_BACKGROUND_LOCATION
-android.permission.PACKAGE_USAGE_STATS          <!-- Granted manually in Settings -->
-android.permission.ACCESS_NOTIFICATION_POLICY   <!-- For DND control -->
-android.permission.RECEIVE_BOOT_COMPLETED       <!-- To restart workers after reboot -->
-```
-
----
-
-## 🔒 Privacy
-
-- **All data stays on your device.** No server, no cloud, no analytics.
-- PhoneWhisperer never uploads your location, app usage, or behaviour data anywhere.
-- The on-device LLM (Gemma 2B) runs entirely locally — no API calls to external AI services.
-- You can delete all collected data from the app settings at any time.
-
----
-
-## 📽️ Demo
-
-[▶ Watch the Demo Video](https://youtu.be/[your-demo-link])
-
----
-
-## 🤝 Team
-
-| Name | Role |
-|---|---|
-| [Abhishek Y S] | Data Layer — Room DB, 3 entities, DAOs, AppDatabase.kt |
-| [Bhuvan S G] | Data Collectors — UsageStatsWorker, LocationWorker, AndroidManifest |
-| [Shiva] | AI Engine — DBSCAN clustering, Gemma 2B RuleGenerator, domain models |
-| [Sushmitha M] | UI — DashboardScreen, RuleApprovalScreen, Theme, build.gradle |
-
----
-## 📱 APK Download
-[Download PhoneWhisperer APK](https://drive.google.com/file/d/1YqHfAr64OLkoEqq9EydxYHm901JBqq_p/view?usp=drivesdk)
-
----
-## 📄 License
-
-This project was built for the CLASH OF THE CLAWS Hackathon. See [AI_DISCLOSURE.md](AI_DISCLOSURE.md) for details on AI tool usage.
+<p align="center"><i>Built with ☕ for the Hackathon</i></p>
