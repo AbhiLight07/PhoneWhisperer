@@ -166,7 +166,10 @@ android.permission.RECEIVE_BOOT_COMPLETED       <!-- To restart workers after re
 | [Sushmitha M] | UI — DashboardScreen, RuleApprovalScreen, Theme, build.gradle |
 
 ---
+## 📱 APK Download
+[Download PhoneWhisperer APK](https://drive.google.com/file/d/1YqHfAr64OLkoEqq9EydxYHm901JBqq_p/view?usp=drivesdk)
 
+---
 ## 📄 License
 
 This project was built for the CLASH OF THE CLAWS Hackathon. See [AI_DISCLOSURE.md](AI_DISCLOSURE.md) for details on AI tool usage.
