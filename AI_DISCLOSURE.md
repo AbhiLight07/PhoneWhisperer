@@ -1,6 +1,6 @@
 # 🤖 AI Disclosure
 
-This document clearly describes how AI tools and models were used in the development of **PhoneWhisperer**, as required by the CLASH OF THE CLAWS Hackathon submission guidelines.
+This document clearly describes how AI tools and models were used in the development .
 
 ---
 
@@ -59,26 +59,6 @@ These AI tools were used to help build PhoneWhisperer — they are **not** part 
 
 ---
 
-## Important Notes
 
-- All AI-generated code was **reviewed, understood, and tested** by the team before use
-- No code was blindly copy-pasted — every file was understood by the team member responsible for it
-- **No user data is sent to any external AI API at runtime** — all inference is 100% on-device
-- AI tools were used as productivity assistants, not as a replacement for understanding
 
----
 
-## Summary Table
-
-| AI Tool | Type | Used In Product? | Used In Development? |
-|---|---|---|---|
-| Gemma 2B (Google) | On-device LLM | ✅ Yes | ❌ No |
-| DBSCAN (custom Kotlin) | ML clustering algorithm | ✅ Yes | ❌ No |
-| Claude Opus (Anthropic) | AI assistant | ❌ No | ✅ Yes |
-| ChatGPT (OpenAI) | AI assistant | ❌ No | ✅ Yes |
-| Gemini (Google) | AI assistant | ❌ No | ✅ Yes |
-| AntiGravity | AI dev tool | ❌ No | ✅ Yes |
-
----
-
-*PhoneWhisperer — CLASH OF THE CLAWS Hackathon, PRISM | Tech Management, SRI-B*
