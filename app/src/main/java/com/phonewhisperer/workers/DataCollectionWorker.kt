@@ -1,0 +1,141 @@
+package com.phonewhisperer.workers
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.util.Log
+import androidx.hilt.work.HiltWorker
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import com.phonewhisperer.data.collector.AppUsageCollector
+import com.phonewhisperer.data.collector.CalendarCollector
+import com.phonewhisperer.data.collector.LocationCollector
+import com.phonewhisperer.data.local.db.dao.LocationEventDao
+import com.phonewhisperer.data.repository.EventRepository
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
+
+/**
+ * Periodic background worker that orchestrates all data collection.
+ *
+ * Runs every 15 minutes (WorkManager minimum interval) and invokes each
+ * collector in sequence: Location → App Usage → Calendar.
+ *
+ * After collection, checks if sufficient location data exists to trigger
+ * geofence setup (Phase 2 enhancement).
+ *
+ * Architecture notes:
+ * - Uses @HiltWorker for constructor injection (requires hilt-work dependency).
+ * - CoroutineWorker runs on Dispatchers.Default by default — I/O operations
+ *   inside Room DAOs already switch to the IO dispatcher via room-ktx.
+ * - Returns Result.success() even if individual collectors fail (partial data
+ *   is better than no data). Only returns Result.retry() on catastrophic errors.
+ * - Stores last run timestamp in SharedPreferences for deduplication.
+ */
+@HiltWorker
+class DataCollectionWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted workerParams: WorkerParameters,
+    private val locationCollector: LocationCollector,
+    private val appUsageCollector: AppUsageCollector,
+    private val calendarCollector: CalendarCollector,
+    private val eventRepository: EventRepository,
+    private val locationEventDao: LocationEventDao
+) : CoroutineWorker(appContext, workerParams) {
+
+    companion object {
+        const val TAG = "DataCollectionWorker"
+        const val WORK_NAME = "phonewhisperer_data_collection"
+        private const val PREFS_NAME = "phonewhisperer_prefs"
+        private const val KEY_LAST_COLLECTION = "last_collection_timestamp"
+        private const val KEY_GEOFENCES_SETUP = "geofences_setup_complete"
+        private const val DATA_RETENTION_DAYS = 14
+        private const val MIN_LOCATIONS_FOR_GEOFENCE = 20
+    }
+
+    override suspend fun doWork(): Result {
+        Log.d(TAG, "=== Data collection cycle starting ===")
+        val startTime = System.currentTimeMillis()
+
+        val prefs = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastCollection = prefs.getLong(KEY_LAST_COLLECTION, startTime - 15 * 60 * 1000)
+
+        try {
+            // 1. Collect location
+            val locationSuccess = try {
+                locationCollector.collectCurrentLocation()
+            } catch (e: Exception) {
+                Log.e(TAG, "Location collection failed", e)
+                false
+            }
+
+            // 2. Collect app usage (since last run)
+            val usageCount = try {
+                appUsageCollector.collectUsageSince(lastCollection)
+            } catch (e: Exception) {
+                Log.e(TAG, "App usage collection failed", e)
+                0
+            }
+
+            // 3. Collect calendar events
+            val calendarCount = try {
+                calendarCollector.collectUpcomingEvents()
+            } catch (e: Exception) {
+                Log.e(TAG, "Calendar collection failed", e)
+                0
+            }
+
+            // 4. Periodic data pruning (once per run, cheap operation)
+            try {
+                eventRepository.pruneOldData(DATA_RETENTION_DAYS)
+            } catch (e: Exception) {
+                Log.e(TAG, "Data pruning failed", e)
+            }
+
+            // 5. Check if we should set up geofences (Phase 2)
+            try {
+                val geofencesSetup = prefs.getBoolean(KEY_GEOFENCES_SETUP, false)
+                if (!geofencesSetup) {
+                    val locationCount = locationEventDao.getAllLocationsSnapshot().size
+                    if (locationCount >= MIN_LOCATIONS_FOR_GEOFENCE) {
+                        Log.d(TAG, "Location count ($locationCount) >= $MIN_LOCATIONS_FOR_GEOFENCE — triggering geofence setup")
+                        val geofenceWork = OneTimeWorkRequestBuilder<GeofenceSetupWorker>()
+                            .addTag(GeofenceSetupWorker.WORK_NAME)
+                            .build()
+                        WorkManager.getInstance(applicationContext).enqueueUniqueWork(
+                            GeofenceSetupWorker.WORK_NAME,
+                            ExistingWorkPolicy.KEEP,
+                            geofenceWork
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Geofence setup check failed", e)
+            }
+
+            // Update last collection timestamp
+            prefs.edit().putLong(KEY_LAST_COLLECTION, startTime).apply()
+
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.d(TAG, """
+                === Data collection cycle complete ===
+                Duration: ${elapsed}ms
+                Location: ${if (locationSuccess) "✓" else "✗"}
+                App usage: $usageCount new sessions
+                Calendar: $calendarCount events
+            """.trimIndent())
+
+            return Result.success()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Critical error in data collection worker", e)
+            return if (runAttemptCount < 3) {
+                Result.retry()
+            } else {
+                Result.failure()
+            }
+        }
+    }
+}
