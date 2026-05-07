@@ -6,12 +6,16 @@ import android.content.Intent
 import android.util.Log
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
+import com.phonewhisperer.data.local.db.entity.AutomationRuleEntity
 import com.phonewhisperer.data.local.db.entity.BehaviorEvent
-import com.phonewhisperer.data.repository.EventRepository
+import com.phonewhisperer.di.RepositoryEntryPoint
+import com.phonewhisperer.execution.ActionExecutor
 import dagger.hilt.android.AndroidEntryPoint
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import javax.inject.Inject
@@ -19,17 +23,14 @@ import javax.inject.Inject
 /**
  * Receives geofence transition events from the Geofencing API.
  *
- * When the user enters, exits, or dwells at a registered geofence,
- * this receiver fires and records a BehaviorEvent with TYPE_GEOFENCE_TRANSITION.
- *
- * The payload contains the geofence label (e.g., "Home", "Office") and
- * the transition type, which feeds into DBSCAN for location-based pattern detection.
+ * Phase 2: Records BehaviorEvents for DBSCAN clustering.
+ * Phase 4: Also checks for approved location-based rules and executes them.
  */
 @AndroidEntryPoint
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     @Inject
-    lateinit var eventRepository: EventRepository
+    lateinit var actionExecutor: ActionExecutor
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -68,12 +69,20 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val triggeringLocation = geofencingEvent.triggeringLocation
 
+        // Get repository via EntryPoint
+        val entryPoint = EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            RepositoryEntryPoint::class.java
+        )
+        val repository = entryPoint.eventRepository()
+
         for (geofence in triggeringGeofences) {
             val requestId = geofence.requestId
             Log.d(TAG, "Geofence transition: $transitionStr at '$requestId'")
 
             scope.launch {
                 try {
+                    // Phase 2: Record the event for DBSCAN
                     val event = BehaviorEvent(
                         timestamp = now,
                         eventType = BehaviorEvent.TYPE_GEOFENCE_TRANSITION,
@@ -83,18 +92,28 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                         dayOfWeek = dayOfWeek,
                         hourOfDay = hourOfDay
                     )
-                    eventRepository.insertBehaviorEvent(event)
+                    repository.insertBehaviorEvent(event)
+
+                    // Phase 4: Check for location-based rules to execute
+                    if (transitionType == Geofence.GEOFENCE_TRANSITION_ENTER) {
+                        val approvedRules = repository.getApprovedRules().first()
+                        val matchingRules = approvedRules.filter {
+                            it.triggerType == "LOCATION" && it.triggerValue == requestId
+                        }
+                        for (rule in matchingRules) {
+                            Log.d(TAG, "⚡ Executing location rule: ${rule.name}")
+                            actionExecutor.execute(rule)
+                        }
+                    }
+
                     Log.d(TAG, "Geofence event recorded: $transitionStr @ $requestId")
                 } catch (e: Exception) {
-                    Log.e(TAG, "Failed to record geofence transition", e)
+                    Log.e(TAG, "Failed to process geofence transition", e)
                 }
             }
         }
     }
 
-    /**
-     * Converts Calendar.DAY_OF_WEEK (Sunday=1) to ISO-8601 (Monday=1, Sunday=7).
-     */
     private fun Int.toIsoDayOfWeek(): Int = when (this) {
         Calendar.SUNDAY -> 7
         else -> this - 1
