@@ -64,7 +64,9 @@ data class BehaviorEvent(
         // Event type constants
         const val TYPE_SILENT_MODE = "SILENT_MODE"
         const val TYPE_APP_OPEN = "APP_OPEN"
+        const val TYPE_APP_USAGE = "APP_USAGE"
         const val TYPE_LOCATION_CHANGE = "LOCATION_CHANGE"
+        const val TYPE_LOCATION = "LOCATION"
         const val TYPE_CALENDAR = "CALENDAR"
         const val TYPE_ALARM = "ALARM"
         const val TYPE_SCREEN_ON = "SCREEN_ON"

@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.phonewhisperer.data.local.db.dao.EventTypeCount
+import com.phonewhisperer.data.local.db.entity.AutomationRuleEntity
+import com.phonewhisperer.data.local.db.entity.BehaviorPatternEntity
 import com.phonewhisperer.data.repository.EventRepository
 import com.phonewhisperer.workers.WorkScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,13 +21,10 @@ import javax.inject.Inject
 /**
  * ViewModel for the dashboard screen.
  *
- * Exposes reactive state for:
- * - Event counts (behavior, location, app usage, notifications)
- * - Collection status (active/paused)
- * - Last collection timestamp
- * - Event type breakdown
- *
- * Uses StateFlow for Compose integration (collected as State in composables).
+ * Phase 6: Now also exposes AI intelligence data:
+ *   - Detected behavior patterns (from DBSCAN)
+ *   - Active automation rules
+ *   - Smart insight summaries
  */
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -58,7 +57,7 @@ class DashboardViewModel @Inject constructor(
     val notificationDistinctAppCount: StateFlow<Int> = eventRepository.getNotificationDistinctAppCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    // ── Total events (derived — now includes notifications) ─────────
+    // ── Total events ────────────────────────────────────────────────
 
     val totalEventCount: StateFlow<Int> = combine(
         eventRepository.getBehaviorEventCount(),
@@ -67,6 +66,14 @@ class DashboardViewModel @Inject constructor(
         eventRepository.getNotificationEventCount()
     ) { behavior, location, usage, notifications -> behavior + location + usage + notifications }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // ── Phase 6: AI Intelligence ────────────────────────────────────
+
+    val detectedPatterns: StateFlow<List<BehaviorPatternEntity>> = eventRepository.getAllBehaviorPatterns()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activeRules: StateFlow<List<AutomationRuleEntity>> = eventRepository.getApprovedRules()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ── Collection status ───────────────────────────────────────────
 
