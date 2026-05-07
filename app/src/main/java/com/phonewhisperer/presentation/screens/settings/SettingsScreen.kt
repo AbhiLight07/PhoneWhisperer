@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.phonewhisperer.presentation.theme.*
 import kotlinx.coroutines.delay
 
@@ -173,6 +174,34 @@ fun SettingsScreen() {
                                 Icon(Icons.Rounded.CheckCircle, null, tint = badgeColor, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(badgeText, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = badgeColor)
+                            }
+                        }
+
+                        if (!onDeviceAvailable) {
+                            Spacer(Modifier.height(16.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                            Spacer(Modifier.height(16.dp))
+                            Text("Fully Offline Mode (Optional)", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground)
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "For maximum privacy, you can run the AI entirely on your phone without internet. " +
+                                "Download the Gemma 2B model (~1.3GB) from Kaggle and place 'gemma-2b-it-gpu-int4.bin' " +
+                                "in your Downloads folder. The app will auto-detect it.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary,
+                                lineHeight = 18.sp
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                            Button(
+                                onClick = { uriHandler.openUri("https://www.kaggle.com/models/google/gemma/tfLite/gemma-2b-it-gpu-int4") },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onBackground),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Rounded.Download, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Get Gemma 2B Model")
                             }
                         }
                     }

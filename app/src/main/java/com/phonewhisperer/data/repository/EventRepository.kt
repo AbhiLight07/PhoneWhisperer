@@ -43,6 +43,7 @@ interface EventRepository {
     fun getAppUsageEventsByTimeRange(start: Long, end: Long): Flow<List<AppUsageEvent>>
     fun getAppUsageEventCount(): Flow<Int>
     fun getDistinctAppCount(): Flow<Int>
+    fun getTotalScreenTimeMs(): Flow<Long?>
 
     // ── NotificationEvent ───────────────────────────────────────────
 
