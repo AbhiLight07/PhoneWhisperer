@@ -7,6 +7,7 @@ import android.util.Log
 import com.phonewhisperer.data.local.db.entity.BehaviorEvent
 import com.phonewhisperer.data.local.db.entity.NotificationEvent
 import com.phonewhisperer.data.repository.EventRepository
+import com.phonewhisperer.execution.NotificationBlockManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,9 @@ class PhoneWhispererNotificationListener : NotificationListenerService() {
 
     @Inject
     lateinit var eventRepository: EventRepository
+
+    @Inject
+    lateinit var notificationBlockManager: NotificationBlockManager
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -80,14 +84,19 @@ class PhoneWhispererNotificationListener : NotificationListenerService() {
 
         serviceScope.launch {
             try {
-                // ── Phase 4: Check for active NOTIFICATION_BLOCK rules ──
-                val approvedRules = eventRepository.getApprovedRules().first()
-                val blockRule = approvedRules.find {
-                    it.actionType == "NOTIFICATION_BLOCK" && it.actionValue == sbn.packageName
-                }
-                if (blockRule != null) {
+                // ── Check NotificationBlockManager for active blocks ──
+                if (notificationBlockManager.isBlocked(sbn.packageName)) {
                     cancelNotification(sbn.key)
-                    Log.d(TAG, "🚫 BLOCKED notification from $appName (rule: ${blockRule.name})")
+                    Log.d(TAG, "🚫 BLOCKED notification from $appName")
+                    
+                    val behaviorEvent = BehaviorEvent(
+                        timestamp = now,
+                        eventType = "TYPE_NOTIFICATION_BLOCKED",
+                        payload = """{"packageName":"${sbn.packageName}","appName":"$appName"}""",
+                        dayOfWeek = dayOfWeek,
+                        hourOfDay = hourOfDay
+                    )
+                    eventRepository.insertBehaviorEvent(behaviorEvent)
                     return@launch
                 }
 

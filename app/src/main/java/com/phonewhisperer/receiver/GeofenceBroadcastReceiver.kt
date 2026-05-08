@@ -10,6 +10,7 @@ import com.phonewhisperer.data.local.db.entity.AutomationRuleEntity
 import com.phonewhisperer.data.local.db.entity.BehaviorEvent
 import com.phonewhisperer.di.RepositoryEntryPoint
 import com.phonewhisperer.execution.ActionExecutor
+import com.phonewhisperer.execution.LocationRuleScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +32,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var actionExecutor: ActionExecutor
+
+    @Inject
+    lateinit var locationRuleScheduler: LocationRuleScheduler
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -96,14 +100,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
                     // Phase 4: Check for location-based rules to execute
                     if (transitionType == Geofence.GEOFENCE_TRANSITION_ENTER) {
-                        val approvedRules = repository.getApprovedRules().first()
-                        val matchingRules = approvedRules.filter {
-                            it.triggerType == "LOCATION" && it.triggerValue == requestId
-                        }
-                        for (rule in matchingRules) {
-                            Log.d(TAG, "⚡ Executing location rule: ${rule.name}")
-                            actionExecutor.execute(rule)
-                        }
+                        locationRuleScheduler.checkAndExecuteLocationRules(requestId)
                     }
 
                     Log.d(TAG, "Geofence event recorded: $transitionStr @ $requestId")

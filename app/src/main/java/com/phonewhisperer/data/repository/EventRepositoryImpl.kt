@@ -22,6 +22,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class EventRepositoryImpl @Inject constructor(
+    private val database: com.phonewhisperer.data.local.db.AppDatabase,
     private val behaviorEventDao: BehaviorEventDao,
     private val locationEventDao: LocationEventDao,
     private val appUsageEventDao: AppUsageEventDao,
@@ -160,5 +161,12 @@ class EventRepositoryImpl @Inject constructor(
             "EventRepository",
             "Pruned old data: $behaviorDeleted behavior, $locationDeleted location, $usageDeleted usage, $notificationDeleted notification events"
         )
+    }
+
+    override suspend fun wipeAllData() {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            database.clearAllTables()
+            android.util.Log.d("EventRepository", "Wiped all AI memory (cleared all tables)")
+        }
     }
 }

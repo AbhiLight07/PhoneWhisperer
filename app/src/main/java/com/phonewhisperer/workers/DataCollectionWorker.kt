@@ -9,9 +9,11 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.phonewhisperer.data.collector.AlarmCollector
 import com.phonewhisperer.data.collector.AppUsageCollector
 import com.phonewhisperer.data.collector.CalendarCollector
 import com.phonewhisperer.data.collector.LocationCollector
+import com.phonewhisperer.data.SettingsManager
 import com.phonewhisperer.data.local.db.dao.LocationEventDao
 import com.phonewhisperer.data.repository.EventRepository
 import dagger.assisted.Assisted
@@ -41,8 +43,10 @@ class DataCollectionWorker @AssistedInject constructor(
     private val locationCollector: LocationCollector,
     private val appUsageCollector: AppUsageCollector,
     private val calendarCollector: CalendarCollector,
+    private val alarmCollector: AlarmCollector,
     private val eventRepository: EventRepository,
-    private val locationEventDao: LocationEventDao
+    private val locationEventDao: LocationEventDao,
+    private val settingsManager: SettingsManager
 ) : CoroutineWorker(appContext, workerParams) {
 
     companion object {
@@ -68,7 +72,7 @@ class DataCollectionWorker @AssistedInject constructor(
         try {
             // 1. Collect location
             val locationSuccess = try {
-                locationCollector.collectCurrentLocation()
+                if (settingsManager.locationTrackingEnabled.value) locationCollector.collectCurrentLocation() else false
             } catch (e: Exception) {
                 Log.e(TAG, "Location collection failed", e)
                 false
@@ -76,7 +80,7 @@ class DataCollectionWorker @AssistedInject constructor(
 
             // 2. Collect app usage (since last run)
             val usageCount = try {
-                appUsageCollector.collectUsageSince(lastCollection)
+                if (settingsManager.usageStatsEnabled.value) appUsageCollector.collectUsageSince(lastCollection) else 0
             } catch (e: Exception) {
                 Log.e(TAG, "App usage collection failed", e)
                 0
@@ -84,9 +88,17 @@ class DataCollectionWorker @AssistedInject constructor(
 
             // 3. Collect calendar events
             val calendarCount = try {
-                calendarCollector.collectUpcomingEvents()
+                calendarCollector.collectUpcomingEvents() // Not toggleable individually in settings per requirements, but good practice
             } catch (e: Exception) {
                 Log.e(TAG, "Calendar collection failed", e)
+                0
+            }
+
+            // 3.5 Collect alarms
+            val alarmCount = try {
+                alarmCollector.collectNextAlarm()
+            } catch (e: Exception) {
+                Log.e(TAG, "Alarm collection failed", e)
                 0
             }
 
@@ -100,7 +112,7 @@ class DataCollectionWorker @AssistedInject constructor(
             // 5. Check if we should set up geofences (Phase 2)
             try {
                 val geofencesSetup = prefs.getBoolean(KEY_GEOFENCES_SETUP, false)
-                if (!geofencesSetup) {
+                if (!geofencesSetup && settingsManager.geofencingEnabled.value) {
                     val locationCount = locationEventDao.getAllLocationsSnapshot().size
                     if (locationCount >= MIN_LOCATIONS_FOR_GEOFENCE) {
                         Log.d(TAG, "Location count ($locationCount) >= $MIN_LOCATIONS_FOR_GEOFENCE — triggering geofence setup")
@@ -124,7 +136,7 @@ class DataCollectionWorker @AssistedInject constructor(
                 val lastAiRun = prefs.getLong(KEY_LAST_AI_RUN, 0L)
                 val hoursSinceLastAi = (startTime - lastAiRun) / (60 * 60 * 1000L)
                 
-                if (hoursSinceLastAi >= AI_COOLDOWN_HOURS) {
+                if (hoursSinceLastAi >= AI_COOLDOWN_HOURS && settingsManager.aiAutoRunEnabled.value) {
                     val unprocessedCount = eventRepository.getUnprocessedBehaviorEvents().size
                     if (unprocessedCount >= MIN_EVENTS_FOR_AI) {
                         Log.d(TAG, "AI trigger: $unprocessedCount unprocessed events, ${hoursSinceLastAi}h since last run — launching PatternAnalysisWorker")
@@ -153,6 +165,7 @@ class DataCollectionWorker @AssistedInject constructor(
                 Location: ${if (locationSuccess) "✓" else "✗"}
                 App usage: $usageCount new sessions
                 Calendar: $calendarCount events
+                Alarms: $alarmCount new alarms
             """.trimIndent())
 
             return Result.success()

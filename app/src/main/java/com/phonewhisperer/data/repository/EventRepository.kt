@@ -67,4 +67,5 @@ interface EventRepository {
     // ── Maintenance ─────────────────────────────────────────────────
 
     suspend fun pruneOldData(retentionDays: Int = 14)
+    suspend fun wipeAllData()
 }

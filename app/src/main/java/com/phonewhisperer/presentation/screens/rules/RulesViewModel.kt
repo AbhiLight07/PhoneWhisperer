@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.phonewhisperer.data.local.db.entity.AutomationRuleEntity
 import com.phonewhisperer.data.repository.EventRepository
+import com.phonewhisperer.domain.usecase.ApproveRuleUseCase
 import com.phonewhisperer.execution.ActionExecutor
 import com.phonewhisperer.execution.TimeRuleScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +29,8 @@ import javax.inject.Inject
 class RulesViewModel @Inject constructor(
     private val eventRepository: EventRepository,
     private val timeRuleScheduler: TimeRuleScheduler,
-    private val actionExecutor: ActionExecutor
+    private val actionExecutor: ActionExecutor,
+    private val approveRuleUseCase: ApproveRuleUseCase
 ) : ViewModel() {
 
     val pendingRules: StateFlow<List<AutomationRuleEntity>> = eventRepository.getPendingRules()
@@ -42,14 +44,7 @@ class RulesViewModel @Inject constructor(
      */
     fun approveRule(ruleId: Long) {
         viewModelScope.launch {
-            eventRepository.updateRuleStatus(ruleId, AutomationRuleEntity.STATUS_APPROVED)
-
-            // Find and schedule the rule
-            val rules = eventRepository.getApprovedRules().stateIn(viewModelScope).value
-            val rule = rules.find { it.id == ruleId }
-            if (rule != null && rule.triggerType == "TIME") {
-                timeRuleScheduler.scheduleRule(rule)
-            }
+            approveRuleUseCase(ruleId)
         }
     }
 

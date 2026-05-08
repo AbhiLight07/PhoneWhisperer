@@ -24,7 +24,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class ActionExecutor @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val notificationBlockManager: NotificationBlockManager
 ) {
     companion object {
         private const val TAG = "ActionExecutor"
@@ -44,9 +45,26 @@ class ActionExecutor @Inject constructor(
                 "RINGER_MODE" -> executeRingerMode(rule.actionValue)
                 "DND" -> executeDnd(rule.actionValue)
                 "NOTIFICATION_BLOCK" -> {
-                    // Phase 5 enhancement — would use NotificationListenerService
-                    // to auto-dismiss notifications from specific apps
-                    Log.d(TAG, "NOTIFICATION_BLOCK action is a stub (Phase 5)")
+                    val packageName = rule.actionValue
+                    var startHour: Int? = null
+                    var endHour: Int? = null
+                    
+                    try {
+                        val trigger = rule.triggerValue
+                        if (trigger.contains("-")) {
+                            val parts = trigger.split("-")
+                            startHour = parts[0].trim().toIntOrNull()
+                            endHour = parts[1].trim().toIntOrNull()
+                        } else {
+                            startHour = trigger.toIntOrNull()
+                            endHour = startHour?.plus(1) // Default to 1 hour block if only start is given
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to parse time window from triggerValue: ${rule.triggerValue}", e)
+                    }
+
+                    notificationBlockManager.addBlock(packageName, startHour, endHour)
+                    Log.d(TAG, "✓ Added $packageName to NotificationBlockManager window $startHour-$endHour")
                     true
                 }
                 else -> {

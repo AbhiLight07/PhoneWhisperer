@@ -89,9 +89,6 @@ object OnDeviceLlmEngine {
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelPath!!)
                 .setMaxTokens(256)
-                // .setTopK(40)
-                // .setTemperature(0.3f)
-                // .setRandomSeed(42)
                 .build()
 
             llmInference = LlmInference.createFromOptions(context, options)

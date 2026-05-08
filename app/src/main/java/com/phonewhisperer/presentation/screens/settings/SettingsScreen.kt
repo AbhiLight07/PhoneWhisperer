@@ -20,21 +20,26 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.phonewhisperer.presentation.theme.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { delay(100); visible = true }
 
-    // Local toggle states (these would connect to SharedPreferences in production)
-    var locationEnabled by remember { mutableStateOf(true) }
-    var usageStatsEnabled by remember { mutableStateOf(true) }
-    var notificationsEnabled by remember { mutableStateOf(true) }
-    var screenTrackingEnabled by remember { mutableStateOf(true) }
-    var ringerTrackingEnabled by remember { mutableStateOf(true) }
-    var geofencingEnabled by remember { mutableStateOf(true) }
+    // State connected to SharedPreferences
+    val locationEnabled by viewModel.locationEnabled.collectAsState()
+    val usageStatsEnabled by viewModel.usageStatsEnabled.collectAsState()
+    val notificationsEnabled by viewModel.notificationsEnabled.collectAsState()
+    val screenTrackingEnabled by viewModel.screenTrackingEnabled.collectAsState()
+    val ringerTrackingEnabled by viewModel.ringerTrackingEnabled.collectAsState()
+    val geofencingEnabled by viewModel.geofencingEnabled.collectAsState()
+    val aiAutoRunEnabled by viewModel.aiAutoRunEnabled.collectAsState()
+    val isModelDownloaded by viewModel.isModelDownloaded.collectAsState()
+    var downloadProgress by remember { mutableStateOf<Int?>(null) }
 
     Column(
         modifier = Modifier
@@ -71,17 +76,17 @@ fun SettingsScreen() {
                     colors = CardDefaults.cardColors(containerColor = DarkCard)
                 ) {
                     Column(Modifier.padding(4.dp)) {
-                        SettingsToggle(Icons.Rounded.LocationOn, "Location Tracking", "GPS-based place detection", StatusActive, locationEnabled) { locationEnabled = it }
+                        SettingsToggle(Icons.Rounded.LocationOn, "Location Tracking", "GPS-based place detection", StatusActive, locationEnabled) { viewModel.setLocationEnabled(it) }
                         HorizontalDivider(color = DarkSurfaceVariant, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                        SettingsToggle(Icons.Rounded.Apps, "App Usage", "Track which apps you use", WhispererSecondary, usageStatsEnabled) { usageStatsEnabled = it }
+                        SettingsToggle(Icons.Rounded.Apps, "App Usage", "Track which apps you use", WhispererSecondary, usageStatsEnabled) { viewModel.setUsageStatsEnabled(it) }
                         HorizontalDivider(color = DarkSurfaceVariant, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                        SettingsToggle(Icons.Rounded.Notifications, "Notification Tracking", "Monitor notification patterns", WhispererAccent, notificationsEnabled) { notificationsEnabled = it }
+                        SettingsToggle(Icons.Rounded.Notifications, "Notification Tracking", "Monitor notification patterns", WhispererAccent, notificationsEnabled) { viewModel.setNotificationsEnabled(it) }
                         HorizontalDivider(color = DarkSurfaceVariant, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                        SettingsToggle(Icons.Rounded.PhoneAndroid, "Screen State", "Track screen on/off events", WhispererPrimary, screenTrackingEnabled) { screenTrackingEnabled = it }
+                        SettingsToggle(Icons.Rounded.PhoneAndroid, "Screen State", "Track screen on/off events", WhispererPrimary, screenTrackingEnabled) { viewModel.setScreenTrackingEnabled(it) }
                         HorizontalDivider(color = DarkSurfaceVariant, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                        SettingsToggle(Icons.Rounded.VolumeOff, "Ringer Mode", "Detect silent/vibrate changes", WhispererTertiary, ringerTrackingEnabled) { ringerTrackingEnabled = it }
+                        SettingsToggle(Icons.Rounded.VolumeOff, "Ringer Mode", "Detect silent/vibrate changes", WhispererTertiary, ringerTrackingEnabled) { viewModel.setRingerTrackingEnabled(it) }
                         HorizontalDivider(color = DarkSurfaceVariant, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 16.dp))
-                        SettingsToggle(Icons.Rounded.FmdGood, "Geofencing", "Auto-detect frequent places", StatusActive, geofencingEnabled) { geofencingEnabled = it }
+                        SettingsToggle(Icons.Rounded.FmdGood, "Geofencing", "Auto-detect frequent places", StatusActive, geofencingEnabled) { viewModel.setGeofencingEnabled(it) }
                     }
                 }
             }
@@ -106,6 +111,57 @@ fun SettingsScreen() {
                         SettingsInfoRow(Icons.Rounded.AutoDelete, "14-Day Retention", "Raw event data is automatically deleted after 14 days.")
                         Spacer(Modifier.height(16.dp))
                         SettingsInfoRow(Icons.Rounded.VisibilityOff, "No Content Storage", "Notification text and message content are never stored — only metadata.")
+                        
+                        Spacer(Modifier.height(24.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                        Spacer(Modifier.height(16.dp))
+                        
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val scope = rememberCoroutineScope()
+                        var showWipeDialog by remember { mutableStateOf(false) }
+
+                        if (showWipeDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showWipeDialog = false },
+                                title = { Text("Wipe AI Memory?", style = MaterialTheme.typography.titleMedium) },
+                                text = { Text("This will permanently delete all collected routines, location history, and generated automation rules. This action cannot be undone.", style = MaterialTheme.typography.bodyMedium) },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            showWipeDialog = false
+                                            scope.launch {
+                                                val repo = context.applicationContext.let { appCtx ->
+                                                    dagger.hilt.android.EntryPointAccessors.fromApplication(
+                                                        appCtx,
+                                                        com.phonewhisperer.di.RepositoryEntryPoint::class.java
+                                                    ).eventRepository()
+                                                }
+                                                repo.wipeAllData()
+                                                android.widget.Toast.makeText(context, "AI Memory Wiped Successfully", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = StatusWarning)
+                                    ) { Text("Yes, Wipe Data", fontWeight = FontWeight.Bold) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showWipeDialog = false }) { Text("Cancel", color = TextSecondary) }
+                                },
+                                containerColor = DarkCard,
+                                titleContentColor = MaterialTheme.colorScheme.onBackground,
+                                textContentColor = TextSecondary
+                            )
+                        }
+
+                        Button(
+                            onClick = { showWipeDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusWarning.copy(alpha = 0.15f), contentColor = StatusWarning),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Rounded.DeleteForever, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Wipe AI Memory", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -135,6 +191,16 @@ fun SettingsScreen() {
                             "Clustering Algorithm",
                             "DBSCAN with cyclic sin/cos temporal encoding, Haversine spatial distance, and app-category semantic matching"
                         )
+                        Spacer(Modifier.height(16.dp))
+                        
+                        SettingsToggle(
+                            icon = Icons.Rounded.Autorenew, 
+                            title = "AI Auto-Run", 
+                            subtitle = "Automatically run Pattern Analysis", 
+                            iconColor = WhispererPrimary, 
+                            isEnabled = aiAutoRunEnabled
+                        ) { viewModel.setAiAutoRunEnabled(it) }
+                        
                         Spacer(Modifier.height(16.dp))
 
                         val ruleGenMode = when {
@@ -192,16 +258,55 @@ fun SettingsScreen() {
                                 lineHeight = 18.sp
                             )
                             Spacer(Modifier.height(12.dp))
-                            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-                            Button(
-                                onClick = { uriHandler.openUri("https://www.kaggle.com/models/google/gemma/tfLite/gemma-2b-it-gpu-int4") },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onBackground),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Icon(Icons.Rounded.Download, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Get Gemma 2B Model")
+                            
+                            if (isModelDownloaded) {
+                                Button(
+                                    onClick = { },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = StatusActive.copy(alpha = 0.2f), contentColor = StatusActive),
+                                    shape = RoundedCornerShape(10.dp),
+                                    enabled = false
+                                ) {
+                                    Icon(Icons.Rounded.CheckCircle, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Gemma 2B Model Downloaded")
+                                }
+                            } else if (downloadProgress != null) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    LinearProgressIndicator(
+                                        progress = { downloadProgress!! / 100f },
+                                        modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                        color = WhispererPrimary,
+                                        trackColor = DarkSurfaceVariant
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Downloading... $downloadProgress%", style = MaterialTheme.typography.labelSmall, color = TextSecondary, modifier = Modifier.align(Alignment.CenterHorizontally))
+                                }
+                            } else {
+                                val scope = rememberCoroutineScope()
+                                Button(
+                                    onClick = {
+                                        val flow = viewModel.startModelDownload()
+                                        if (flow != null) {
+                                            scope.launch {
+                                                flow.collect { progress ->
+                                                    downloadProgress = progress
+                                                    if (progress >= 100) {
+                                                        downloadProgress = null
+                                                        viewModel.refreshModelStatus()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onBackground),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Download, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Download Gemma 2B Model (1.5GB)")
+                                }
                             }
                         }
                     }

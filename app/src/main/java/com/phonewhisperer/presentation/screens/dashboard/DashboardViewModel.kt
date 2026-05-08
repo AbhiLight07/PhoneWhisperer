@@ -7,6 +7,8 @@ import com.phonewhisperer.data.local.db.dao.EventTypeCount
 import com.phonewhisperer.data.local.db.entity.AutomationRuleEntity
 import com.phonewhisperer.data.local.db.entity.BehaviorPatternEntity
 import com.phonewhisperer.data.repository.EventRepository
+import com.phonewhisperer.domain.usecase.DashboardStats
+import com.phonewhisperer.domain.usecase.GetDashboardStatsUseCase
 import com.phonewhisperer.workers.WorkScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,10 +32,14 @@ import javax.inject.Inject
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val application: Application,
-    private val eventRepository: EventRepository
+    private val eventRepository: EventRepository,
+    getDashboardStatsUseCase: GetDashboardStatsUseCase
 ) : AndroidViewModel(application) {
 
     // ── Reactive event counts ───────────────────────────────────────
+    
+    val dashboardStats: StateFlow<DashboardStats?> = getDashboardStatsUseCase()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val behaviorEventCount: StateFlow<Int> = eventRepository.getBehaviorEventCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)

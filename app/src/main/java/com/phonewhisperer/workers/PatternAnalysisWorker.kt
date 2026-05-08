@@ -5,10 +5,8 @@ import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.phonewhisperer.ai_engine.clustering.DBSCANClusterer
-import com.phonewhisperer.ai_engine.llm.RuleGenerator
 import com.phonewhisperer.data.local.db.entity.BehaviorEvent
-import com.phonewhisperer.data.repository.EventRepository
+import com.phonewhisperer.domain.usecase.AnalyzePatternsUseCase
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
@@ -29,7 +27,7 @@ import dagger.assisted.AssistedInject
 class PatternAnalysisWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
-    private val eventRepository: EventRepository
+    private val analyzePatternsUseCase: AnalyzePatternsUseCase
 ) : CoroutineWorker(appContext, workerParams) {
 
     companion object {
@@ -40,64 +38,13 @@ class PatternAnalysisWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         Log.d(TAG, "Pattern analysis worker starting...")
 
-        val unprocessedEvents = eventRepository.getUnprocessedBehaviorEvents()
-        if (unprocessedEvents.size < 10) { // Lowered to 10 for testing
-            Log.d(TAG, "Not enough data yet (${unprocessedEvents.size} events). Need 10+.")
-            return Result.success()
-        }
-
-        try {
-            val clusterer = DBSCANClusterer(eps = 0.20, minPts = 3)
-            val ruleGenerator = RuleGenerator()
-
-            // 1. Group events by type (we only cluster similar actions)
-            val eventsByType = unprocessedEvents.groupBy { it.eventType }
-
-            for ((eventType, events) in eventsByType) {
-                Log.d(TAG, "Processing ${events.size} events of type $eventType")
-
-                // 2. Run DBSCAN
-                val patterns = clusterer.cluster(events)
-                if (patterns.isEmpty()) continue
-
-                // 3. Save Patterns
-                for (pattern in patterns) {
-                    val patternId = eventRepository.insertBehaviorPattern(pattern)
-                    Log.d(TAG, "Saved pattern: ${pattern.description} (ID: $patternId)")
-
-                    // Reconstruct pattern with DB-assigned ID for LLM
-                    val savedPattern = pattern.copy(id = patternId)
-
-                    // 4. Generate Rules (3-tier: On-device Gemma → Gemini Cloud → Heuristic)
-                    val rules = ruleGenerator.generateRules(listOf(savedPattern), applicationContext)
-                    
-                    // 5. Save Rules
-                    for (rule in rules) {
-                        val ruleId = eventRepository.insertAutomationRule(rule)
-                        Log.d(TAG, "Proposed rule: ${rule.name} (ID: $ruleId)")
-                    }
-
-                    // 6. Mark events as processed (assigned to this cluster ID)
-                    val eventIds = events.filter { 
-                        // In a real scenario we'd track exactly which event went to which cluster.
-                        // For simplicity in this worker, we just mark all passed events as processed.
-                        true 
-                    }.map { it.id }
-                    
-                    eventRepository.markBehaviorEventsProcessed(eventIds, pattern.clusterId)
-                }
-            }
-
-            // Fallback to ensure all events are marked processed even if no clusters found
-            val allIds = unprocessedEvents.map { it.id }
-            eventRepository.markBehaviorEventsProcessed(allIds, null)
-
-            Log.d(TAG, "Pattern analysis complete. Processed ${unprocessedEvents.size} events.")
-            return Result.success()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Pattern analysis failed", e)
-            return Result.failure()
+        val result = analyzePatternsUseCase.invoke()
+        return if (result.isSuccess) {
+            val stats = result.getOrNull()
+            Log.d(TAG, "Pattern analysis complete. Found ${stats?.patternsFound} patterns, generated ${stats?.rulesGenerated} rules.")
+            Result.success()
+        } else {
+            Result.failure()
         }
     }
 }
