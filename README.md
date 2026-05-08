@@ -70,8 +70,8 @@ For maximum privacy, PhoneWhisperer can run entirely without internet.
 - **Background Work:** WorkManager, NotificationListenerService, UsageStatsManager
 - **AI Models:** MediaPipe GenAI (Gemma), Google Cloud Generative AI SDK
 - **Algorithms:** Custom DBSCAN implementation with cyclic temporal weighting
-
+---
+[▶ Watch the Demo Video]([https://youtu.be/8WLLRvkJbv4])
 ---
 <p align="center"><i>Built with ☕ for the Hackathon</i></p>
 ---
-[▶ Watch the Demo Video]([https://youtu.be/8WLLRvkJbv4])
